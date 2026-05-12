@@ -389,6 +389,11 @@ sequenceDiagram
 ![Azzaka Code Diagram Entities](images/code_diagram_azzaka_entities.drawio.png)
 
 ### Marco's Container
+##### Container Diagram
+![Forum Container Diagram](images/container_diagram_marco.drawio.png)
+
+##### Component Diagram
+![Forum Component Diagram](images/component_diagram_marco.drawio.png)
 
 ### Muhathir's Container
 ##### Container Diagram

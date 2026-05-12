@@ -3,12 +3,15 @@ Repository ini merujuk pada aplikasi Yomu yang berada di organisasi AdvPro-13, a
 
 ## Context Diagram
 ![Context Diagram](images/context_diagram.drawio.png)
+Context diagram menggambarkan Yomu sebagai satu sistem tunggal yang berinteraksi dengan dua aktor utama: Pelajar yang menggunakan aplikasi untuk membaca, mengerjakan kuis, dan berpartisipasi dalam sistem gamifikasi; serta Admin yang mengelola konten, moderasi, dan siklus liga. Sistem juga terhubung dengan layanan eksternal Google OAuth untuk keperluan autentikasi Single Sign-On.
 
 ## Container Diagram
 ![Container Diagram](images/container_diagram.drawio.png)
+Container diagram menunjukkan bahwa Yomu terdiri dari tiga container utama: Next.js Frontend yang di-deploy di Vercel sebagai antarmuka pengguna, Spring Boot Monolith yang berjalan di AWS ECS Fargate sebagai inti pemrosesan logika bisnis, dan PostgreSQL sebagai penyimpanan data utama. Komunikasi antara frontend dan backend dilakukan melalui REST API over HTTPS, sementara komunikasi antar modul di dalam monolith menggunakan Spring ApplicationEvent untuk menjaga loose coupling.
 
 ## Deployment Diagram
 ![Deployment Diagram](images/deployment_diagram.drawio.png)
+Deployment diagram menggambarkan infrastruktur Yomu saat ini yang berjalan pada satu environment: frontend di Vercel dan backend pada satu instance AWS ECS Fargate dengan satu database PostgreSQL. Arsitektur ini dipilih karena sederhana dan cukup untuk kebutuhan pengembangan awal tim kecil.
 
 ## Rencana Arsitektur Aplikasi di Masa Depan
 ```mermaid

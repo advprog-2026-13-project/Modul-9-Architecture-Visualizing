@@ -362,6 +362,14 @@ sequenceDiagram
 ### Nadya's Container
 
 ### Azzaka's Container
+##### Container Diagram
+![Achievement Container Diagram](images/container_diagram_azzaka.drawio.png)
+
+##### Code Diagram — Strategy Pattern
+![Azzaka Code Diagram Strategy](images/code_diagram_azzaka_strategy.drawio.png)
+
+##### Code Diagram — Entities
+![Azzaka Code Diagram Entities](images/code_diagram_azzaka_entities.drawio.png)
 
 ### Marco's Container
 

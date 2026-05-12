@@ -130,8 +130,25 @@ Setiap mitigasi secara langsung mempengaruhi desain arsitektur:
 ### Mengapa kami memilih untuk Tetap Monolith
 
 Risk storming juga memvalidasi keputusan kami untuk tidak memecah sistem menjadi microservices. Risiko yang kami temukan, single database, single instance, tidak ada caching, adalah masalah infrastruktur, bukan masalah arsitektur. Memecah menjadi microservices justru akan menambah lebih banyak risiko (network latency, distributed tracing, konsistensi data) tanpa menyelesaikan akar masalahnya. Modular monolith di atas infrastruktur yang scalable (ECS, RDS, ElastiCache) mengatasi risiko nyata sambil menjaga kompleksitas operasional tetap manageable untuk tim kecil.
+
 ## Kerentanan dan Keamanan Aplikasi
-...
+Berdasarkan hasil risk storming yang telah dilakukan, kami mengidentifikasi beberapa kerentanan utama pada arsitektur Yomu saat ini beserta mitigasi yang telah dan akan diterapkan.
+
+### JWT di localStorage
+Pada implementasi saat ini, JWT access token disimpan di localStorage browser. Ini merupakan kerentanan terhadap serangan Cross-Site Scripting (XSS). Apabila ada script berbahaya yang berhasil diinjeksikan ke halaman, token dapat dicuri dan digunakan untuk mengambil alih akun pengguna.
+Mitigasi yang direncanakan: Memindahkan token ke httpOnly Cookie sehingga tidak dapat diakses oleh JavaScript sama sekali. Perubahan ini sudah tercermin pada arsitektur masa depan.
+
+### Single PostgreSQL Instance (SPOF)
+Arsitektur saat ini hanya menggunakan satu instance PostgreSQL tanpa failover. Jika database mengalami gangguan, seluruh platform akan ikut down karena semua modul bergantung pada satu sumber data yang sama.
+Mitigasi yang direncanakan: Menggunakan RDS PostgreSQL Multi-AZ dengan Read Replica untuk memisahkan jalur read/write dan mengaktifkan auto-failover otomatis.
+
+### Tidak Ada Cache Layer
+Setiap request dari pengguna, termasuk untuk leaderboard dan data profil yang jarang berubah, langsung menyentuh database. Pada skala besar, ini akan menjadi bottleneck yang signifikan.
+Mitigasi yang direncanakan: Menambahkan ElastiCache Redis sebagai cache layer. Data yang sering diakses seperti leaderboard dan session dapat di-cache sehingga mengurangi beban database secara drastis.
+
+### Tidak Ada Rate Limiting
+Tidak ada mekanisme pembatasan request saat ini, sehingga endpoint publik rentan terhadap serangan brute force maupun DDoS.
+Mitigasi yang direncanakan: Menambahkan AWS WAF di edge layer dengan aturan rate limiting dan perlindungan OWASP untuk memblokir traffic berbahaya sebelum mencapai aplikasi.
 
 ## Individual Works
 

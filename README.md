@@ -390,7 +390,7 @@ sequenceDiagram
 
 ### Marco's Container
 ##### Container Diagram
-![Forum Container Diagram](images/container_diagram_marco.drawio.png)
+![Forum Container Diagram.](images/container_diagram_marco.drawio.png)
 
 ##### Component Diagram
 ![Forum Component Diagram](images/component_diagram_marco.drawio.png)

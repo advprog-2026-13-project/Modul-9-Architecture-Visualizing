@@ -133,6 +133,228 @@ Risk storming juga memvalidasi keputusan kami untuk tidak memecah sistem menjadi
 ## Individual Works
 
 ### Rifqi's Container
+#### Container Diagram
+```mermaid
+graph TD
+    Browser["Browser"]
+    
+    subgraph "Vercel"
+        NextJS["Next.js 16 Frontend"]
+        APIRoutes["Next.js API Routes<br/>BFF Proxy"]
+    end
+    
+    subgraph "AWS ECS Fargate"
+        LB["Application Load Balancer"]
+        subgraph "Spring Boot Monolith"
+            Auth["Auth Module"]
+            Reading["Reading Module"]
+            Achievements["Achievements Module"]
+        end
+    end
+    
+    subgraph "AWS"
+        RDS["RDS PostgreSQL"]
+        ElastiCache["ElastiCache Redis"]
+    end
+    
+    Google["Google OAuth"]
+    Browser -->|"HTTPS"| NextJS
+    NextJS -->|"proxy /api/auth/*"| APIRoutes
+    APIRoutes -->|"REST JSON"| LB
+    LB --> Auth
+    Auth -->|"JPA"| RDS
+    Auth -->|"session cache"| ElastiCache
+    Browser -->|"OAuth login"| Google
+    Auth -->|"token verify"| Google
+    Reading -.->|"event"| Achievements
+```  
+
+#### Component Diagram
+```mermaid
+graph TD
+    subgraph "API Layer"
+        ACL["AuthController<br/>POST /register<br/>POST /login<br/>POST /google"]
+        MCL["MeController<br/>GET /me<br/>PATCH /me<br/>DELETE /me"]
+    end
+    subgraph "Application Layer"
+        AS["AuthService<br/>register(RegisterRequest)<br/>login(LoginRequest)<br/>loginWithGoogle(String)<br/>updateUser(UUID, request)<br/>deleteUser(UUID)"]
+        GS["GoogleService<br/>verifyToken(String)<br/>returns Payload"]
+    end
+    subgraph "Domain Layer"
+        UE["User Entity<br/>id: UUID<br/>username: String<br/>displayName: String<br/>email: String<br/>phoneNumber: String<br/>passwordHash: String<br/>googleSub: String<br/>role: Role<br/>createdAt: Timestamp"]
+        RE["Role Enum<br/>USER<br/>ADMIN"]
+        DTO["DTOs<br/>RegisterRequest<br/>LoginRequest<br/>AuthResponse<br/>MeResponse<br/>UpdateAccountRequest"]
+    end
+    subgraph "Infrastructure Layer"
+        UR["UserRepository<br/>findByUsername<br/>findByEmail<br/>findByPhoneNumber<br/>findByGoogleSub<br/>findById"]
+        JWT["JwtService<br/>generateToken(User)<br/>parse(token): Payload"]
+        JF["JwtAuthFilter<br/>doFilterInternal<br/>extract Bearer<br/>set SecurityContext"]
+        SU["SecurityUser<br/>implements UserDetails<br/>getUser(): User"]
+        SC["SecurityConfig<br/>stateless sessions<br/>BCrypt(12)<br/>permitAll: /auth/*<br/>authenticated: /**"]
+    end
+    subgraph "External"
+        PGSQL["PostgreSQL"]
+        GOOGLE["Google Identity"]
+    end
+    ACL --> AS
+    MCL --> AS
+    AS --> UR
+    AS --> JWT
+    AS --> GS
+    AS --> DTO
+    UR --> PGSQL
+    GS --> GOOGLE
+    JF --> JWT
+    JF --> UR
+    JF --> SU
+    JF --> SC
+```
+
+#### Login, Register & Google SSO
+```mermaid
+sequenceDiagram
+    actor User
+    participant Client as Next.js Page
+    participant GoogleUI as Google OAuth
+    participant Proxy as Next.js API Route
+    participant Ctrl as AuthController
+    participant Svc as AuthService
+    participant GS as GoogleService
+    participant GID as Google Identity
+    participant Repo as UserRepository
+    participant BCrypt as BCryptPasswordEncoder
+    participant JWT as JwtService
+    participant DB as PostgreSQL
+    rect rgb(230, 245, 255)
+        Note over User,DB: REGISTRATION
+        User->>Client: Fill register form<br/>{username, displayName, email, password}
+        Client->>Proxy: POST /api/auth/register
+        Proxy->>Ctrl: proxy to backend
+        Ctrl->>Ctrl: @Valid RegisterRequest
+        Ctrl->>Svc: register(request)
+        Svc->>Repo: findByUsername(username)
+        Repo->>DB: SELECT WHERE username = ?
+        DB-->>Repo: null
+        Svc->>Repo: findByEmail(email)
+        DB-->>Repo: null
+        Svc->>BCrypt: encode(password)
+        BCrypt-->>Svc: passwordHash
+        Svc->>Svc: new User(role=USER, now)
+        Svc->>Repo: save(user)
+        Repo->>DB: INSERT INTO users
+        DB-->>Repo: user with UUID
+        Svc->>JWT: generateToken(user)
+        JWT-->>Svc: accessToken
+        Svc-->>Ctrl: AuthResponse(accessToken)
+        Ctrl-->>Proxy: 200 {accessToken}
+        Proxy-->>Client: 200 {accessToken}
+    end
+    rect rgb(255, 248, 230)
+        Note over User,DB: LOGIN
+        User->>Client: Fill login form<br/>{identifier, password}
+        Client->>Proxy: POST /api/auth/login
+        Proxy->>Ctrl: proxy to backend
+        Ctrl->>Ctrl: @Valid LoginRequest
+        Ctrl->>Svc: login(request)
+        Svc->>Repo: findByUsername(identifier)
+        Repo->>DB: SELECT WHERE username = ?
+        DB-->>Repo: null
+        Svc->>Repo: findByEmail(identifier)
+        Repo->>DB: SELECT WHERE email = ?
+        DB-->>Repo: user
+        Svc->>BCrypt: matches(password, user.passwordHash)
+        BCrypt-->>Svc: true
+        Svc->>JWT: generateToken(user)
+        JWT-->>Svc: accessToken
+        Svc-->>Ctrl: AuthResponse(accessToken)
+        Ctrl-->>Proxy: 200 {accessToken}
+        Proxy-->>Client: 200 {accessToken}
+        Client->>Client: localStorage.setItem("token", accessToken)
+        Client-->>User: Redirect to dashboard
+    end
+    rect rgb(235, 255, 235)
+        Note over User,DB: GOOGLE SSO
+        User->>Client: Click "Sign in with Google"
+        Client->>GoogleUI: Open Google OAuth popup
+        GoogleUI->>User: Select Google account
+        GoogleUI-->>Client: Google ID Token
+        Client->>Proxy: POST /api/auth/google<br/>{token: idTokenString}
+        Proxy->>Ctrl: proxy to backend
+        Ctrl->>Svc: loginWithGoogle(idTokenString)
+        Svc->>GS: verifyToken(idTokenString)
+        GS->>GS: Build GoogleIdTokenVerifier(clientId)
+        GS->>GID: verifier.verify(idTokenString)
+        GID-->>GS: GoogleIdToken
+        GS-->>Svc: Payload(email, sub, name)
+        Svc->>Repo: findByGoogleSub(sub)
+        Repo->>DB: SELECT WHERE google_sub = ?
+        DB-->>Repo: null
+        Svc->>Repo: findByEmail(email)
+        Repo->>DB: SELECT WHERE email = ?
+        DB-->>Repo: null
+        Svc->>Svc: new User(googleSub=sub, email, name,<br/>role=USER, now)
+        Svc->>Repo: save(user)
+        Repo->>DB: INSERT INTO users
+        DB-->>Repo: saved
+        Svc->>JWT: generateToken(user)
+        JWT-->>Svc: accessToken
+        Svc-->>Ctrl: AuthResponse(accessToken)
+        Ctrl-->>Proxy: 200 {accessToken}
+        Proxy-->>Client: 200 {accessToken}
+        Client-->>User: Redirect to dashboard
+    end
+    Note over Repo,DB: All three flows end with JWT generation<br/>and return accessToken to client
+```
+
+
+#### JWT Filter & Authenticated Request
+```mermaid
+sequenceDiagram
+    actor User
+    participant Client as Next.js Page
+    participant Proxy as Next.js API Route
+    participant Filter as JwtAuthFilter
+    participant JWT as JwtService
+    participant Repo as UserRepository
+    participant SC as SecurityContext
+    participant Ctrl as MeController
+    participant Svc as AuthService
+    participant DB as PostgreSQL
+    User->>Client: Visit dashboard
+    Client->>Client: token = localStorage.getItem("token")
+    Client->>Proxy: GET /api/auth/me<br/>Authorization: Bearer {token}
+    Proxy->>Proxy: Check Authorization header
+    alt No header
+        Proxy-->>Client: 401 Unauthorized
+    end
+    Proxy->>Filter: forward to backend<br/>Authorization: Bearer {token}
+    Filter->>Filter: Extract header
+    alt No "Bearer " prefix
+        Filter->>Filter: chain.doFilter() — skip
+    end
+    Filter->>JWT: parse(token)
+    JWT->>JWT: verify HMAC signature<br/>extract claims
+    JWT-->>Filter: Payload(userId, username, role)
+    Filter->>Repo: findById(UUID.fromString(userId))
+    Repo->>DB: SELECT * FROM users WHERE id = ?
+    DB-->>Repo: user row
+    Repo-->>Filter: User entity
+    Filter->>Filter: new SecurityUser(user)
+    Filter->>SC: setAuthentication(<br/>  UsernamePasswordAuthenticationToken(<br/>    SecurityUser, null, [ROLE_USER]))
+    Filter->>Filter: chain.doFilter()
+    Ctrl->>SC: getAuthentication().getPrincipal()
+    SC-->>Ctrl: SecurityUser
+    Ctrl->>Ctrl: user = securityUser.getUser()
+    Ctrl->>Svc: getCurrentUser(user.getId())
+    Svc->>Repo: findById(userId)
+    Repo->>DB: SELECT * FROM users WHERE id = ?
+    DB-->>Repo: user
+    Svc-->>Ctrl: User
+    Ctrl-->>Proxy: MeResponse(user)
+    Proxy-->>Client: 200 {id, username, email, role...}
+    Client-->>User: Render dashboard profile
+    Note over JWT,Filter: If token expired/invalid<br/>catch → log error → clearContext → 401
+```
 
 ### Nadya's Container
 
